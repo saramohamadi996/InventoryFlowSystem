@@ -1,0 +1,104 @@
+version: '3.7'
+
+services:
+  mongoDB_container:
+    image: mongo:latest
+    restart: unless-stopped
+    ports:
+      - 27017:27018
+    volumes:
+      - ./mongodb_data_container:/data/db
+    networks:
+      - mongodb_local_network
+
+  ielts-php:
+    build:
+      context: .
+      dockerfile: app.dockerfile
+    container_name: ielts-php
+    tty: true
+    restart: always
+    environment:
+      SERVICE_NAME: ielts-php
+      SERVICE_TAGS: dev
+    working_dir: /var/www/server
+    volumes:
+      - ./laravel:/var/www/server
+      - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - ielts-network
+      - mongodb_local_network
+    depends_on:
+      - ielts-mysql
+    command: /bin/bash -c "php-fpm"
+
+  ielts-nginx:
+    build:
+      context: ./
+      dockerfile: webserver.dockerfile
+    container_name: ielts-nginx
+    tty: true
+    restart: always
+    ports:
+      - "8082:80"
+    volumes:
+      - ./laravel:/var/www/server
+    depends_on:
+      - ielts-php
+    networks:
+      - ielts-network
+      - mongodb_local_network
+
+  ielts-mysql:
+    image: mysql:8.0
+    container_name: ielts-mysql
+    restart: always
+    tty: true
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    ports:
+      - "33068:3306"
+    volumes:
+      - ielts_mysql:/var/lib/mysql/
+      - ./dbs:/docker-entrypoint-initdb.d
+      - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - ielts-network
+
+  ielts-phpmyadmin:
+    depends_on:
+      - ielts-mysql
+    image: phpmyadmin/phpmyadmin
+    container_name: ielts-phpmyadmin
+    links:
+      - ielts-mysql
+    environment:
+      PMA_HOST: ielts-mysql
+      MYSQL_ROOT_PASSWORD: password
+    restart: always
+    ports:
+      - "8088:80"
+    networks:
+      - ielts-network
+
+  ielts-redis:
+    image: redis:latest
+    container_name: ielts-redis
+    restart: always
+    volumes:
+      - ./redis/data:/data
+    ports:
+      - "6369:6379"
+    networks:
+      - ielts-network
+
+networks:
+  ielts-network:
+    driver: bridge
+  mongodb_local_network:
+    external: true
+
+volumes:
+  mongodb_data_container:
+  ielts_mysql:
+    driver: local
